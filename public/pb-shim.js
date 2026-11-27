@@ -124,12 +124,48 @@
   var db = { doc: docRef, collection: collectionRef };
 
   /* ---------------- who is the administrator ---------------- */
-  function verifyStored() {
-    if (!getKey()) return Promise.resolve(false);
-    return fetch(API + "/auth", { method: "POST", headers: headers(), cache: "no-store" })
-      .then(function (r) { return r.ok; })
-      .catch(function () { return false; });
+  // A key the server has already accepted is remembered on this device, so choosing
+  // "Administrator" opens instantly instead of waiting for a server round trip every time.
+  // It is still re-checked quietly in the background, and publishing is always checked
+  // by the server, so a remembered key never grants anything the server would refuse.
+  var OK_STORE = "pb_admin_ok";
+  function fp(k) { var h = 5381; for (var i = 0; i < k.length; i++) h = ((h * 33) ^ k.charCodeAt(i)) >>> 0; return "v1:" + h.toString(36); }
+  function isRemembered(k) { try { return !!k && localStorage.getItem(OK_STORE) === fp(k); } catch (e) { return false; } }
+  function remember(k) { try { if (k) localStorage.setItem(OK_STORE, fp(k)); else localStorage.removeItem(OK_STORE); } catch (e) {} }
+
+  var pending = null, pendingKey = "", rechecked = false;
+  // Asks the server once per key per page; parallel callers share the same request.
+  // Resolves "ok", "bad" (key rejected) or "net" (server unreachable).
+  function check(k) {
+    if (pending && pendingKey === k) return pending;
+    pendingKey = k;
+    pending = fetch(API + "/auth", { method: "POST", headers: headers(k), cache: "no-store" })
+      .then(function (r) {
+        if (r.ok) { remember(k); return "ok"; }
+        if (r.status === 401 || r.status === 403) {
+          if (getKey() === k) { setKey(""); remember(""); }
+          return "bad";
+        }
+        return "net";
+      })
+      .catch(function () { return "net"; });
+    var mine = pending;
+    mine.then(function (v) { if (v !== "ok" && pending === mine) pending = null; });
+    return mine;
   }
+
+  function verifyStored() {
+    var k = getKey();
+    if (!k) return Promise.resolve(false);
+    if (isRemembered(k)) {
+      if (!rechecked) { rechecked = true; check(k); } // background re-check, not awaited
+      return Promise.resolve(true);
+    }
+    return check(k).then(function (v) { return v === "ok"; });
+  }
+  // Start checking a saved key right away so the answer is ready by the time it's needed.
+  if (getKey() && !isRemembered(getKey())) check(getKey());
+
   var user = {
     canEdit: verifyStored,
     isOwner: verifyStored,
@@ -158,12 +194,11 @@
         var k = inp.value.trim();
         if (!k) return;
         err.textContent = "Checking\u2026";
-        fetch(API + "/auth", { method: "POST", headers: headers(k), cache: "no-store" })
-          .then(function (r) {
-            if (r.ok) { setKey(k); close(k); }
-            else { err.textContent = "That key is not correct."; inp.select(); }
-          })
-          .catch(function () { err.textContent = "Could not reach the server. Check your connection."; });
+        check(k).then(function (v) {
+          if (v === "ok") { setKey(k); remember(k); close(k); }
+          else if (v === "bad") { err.textContent = "That key is not correct."; inp.select(); }
+          else err.textContent = "Could not reach the server. Check your connection.";
+        });
       };
     });
   }
@@ -172,11 +207,10 @@
   window.__pbAuth = function () {
     return verifyStored().then(function (ok) {
       if (ok) return true;
-      setKey("");
       return askKey().then(function (k) { return !!k; });
     });
   };
-  window.__pbForgetAdminKey = function () { setKey(""); };
+  window.__pbForgetAdminKey = function () { setKey(""); remember(""); };
 
   // Umpire sign-in is checked on the server so password hashes never reach browsers.
   window.__pbUmpLogin = function (key, h) {
@@ -192,6 +226,10 @@
         // Reload with a unique query so the CDN can't hand back the previous page.
         setTimeout(function () { location.replace(location.pathname + "?_=" + Date.now()); }, 700);
         return res;
+      }, function (e) {
+        // The server no longer accepts this key (e.g. ADMIN_KEY was changed): forget it.
+        if (e && e.status === 401) { setKey(""); remember(""); }
+        throw e;
       });
     }
   };
