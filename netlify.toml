@@ -1,0 +1,9 @@
+[build]
+  publish = "public"
+  functions = "netlify/functions"
+
+# Any unknown address opens the app instead of a "Page not found" error.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

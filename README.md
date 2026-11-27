@@ -10,7 +10,7 @@ phones and viewers see live scores.
 |---|---|
 | `public/index.html` | The app (viewer, umpire and organizer screens). A plain static file, so the site always loads. |
 | `public/pb-shim.js` | Gives the app its shared database, publishing and admin sign-in, using the functions below. |
-| `netlify/functions/api.mjs` | Shared scoreboard (umpire accounts + live match scores), publishing, admin key check. Data is kept in Netlify Blobs. |
+| `netlify/functions/api.mjs` (+ `netlify/lib/`) | Shared scoreboard (umpire accounts + live match scores), publishing, admin key check. Data is kept in Netlify Blobs. |
 
 Tournament set-up data (divisions, teams, schedules) stays in the **organizer's browser**.
 Pressing **Publish** copies the public snapshot to Netlify so everyone sees it.
@@ -69,6 +69,5 @@ Any unknown address (for example `/something`) now opens the app instead of an e
 
 ```bash
 npm install
-npm test            # builds and runs the API tests
 npx netlify dev     # run everything locally (needs the Netlify CLI)
 ```

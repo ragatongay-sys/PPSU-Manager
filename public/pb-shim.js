@@ -139,6 +139,7 @@
   function askKey() {
     return new Promise(function (resolve) {
       var wrap = document.createElement("div");
+      wrap.id = "pbkey"; // the page CSS hides unknown top-level elements; #pbkey is allowed
       wrap.style.cssText = "position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:16px;font-family:system-ui,sans-serif";
       wrap.innerHTML =
         '<form style="background:#fff;color:#111;border-radius:16px;padding:20px;max-width:360px;width:100%;box-shadow:0 10px 40px rgba(0,0,0,.4)">' +
